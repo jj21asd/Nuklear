@@ -1563,7 +1563,7 @@ NK_API nk_bool nk_begin(struct nk_context *ctx, const char *title, struct nk_rec
 NK_API nk_bool nk_begin_titled(struct nk_context *ctx, const char *id, const char *title, struct nk_rect bounds, nk_flags flags);
 
 NK_API nk_bool nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
-    struct nk_rect bounds, struct nk_vec2 min_size, struct nk_vec2 max_size, nk_flags flags)
+    struct nk_rect bounds, struct nk_vec2 min_size, struct nk_vec2 max_size, nk_flags flags);
 
 /**
  * # # nk_end
@@ -20663,13 +20663,13 @@ nk_window_clamp_bounds(struct nk_rect bounds, struct nk_vec2 min_size,
     /* clamp width */
     if (min_size.x > 0 && bounds.w < min_size.x)
         bounds.w = min_size.x;
-    else if (max_size.x > 0 && bounds.w > max_size.x)
+    if (max_size.x > 0 && bounds.w > max_size.x)
         bounds.w = max_size.x;
     /* clamp height */
-    if (min_size.x > 0 && bounds.w < min_size.x)
-        bounds.w = min_size.x;
-    else if (max_size.x > 0 && bounds.w > max_size.x)
-        bounds.w = max_size.x;
+    if (min_size.y > 0 && bounds.h < min_size.y)
+        bounds.h = min_size.y;
+    if (max_size.y > 0 && bounds.h > max_size.y)
+        bounds.h = max_size.y;
     return bounds;
 }
 
@@ -20739,7 +20739,7 @@ nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
         if (!(win->flags & (NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE))) {
             win->bounds = bounds;
         } else {
-            win-> bounds = nk_window_clamp_bounds(bounds, min_size, max_size);
+            win->bounds = nk_window_clamp_bounds(win->bounds, min_size, max_size);
         }
         
         /* If this assert triggers you either:
