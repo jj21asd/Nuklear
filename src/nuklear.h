@@ -1340,6 +1340,9 @@ NK_API nk_bool nk_begin(struct nk_context *ctx, const char *title, struct nk_rec
  */
 NK_API nk_bool nk_begin_titled(struct nk_context *ctx, const char *name, const char *title, struct nk_rect bounds, nk_flags flags);
 
+NK_API nk_bool nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
+    struct nk_rect bounds, struct nk_vec2 min_size, struct nk_vec2 max_size, nk_flags flags)
+
 /**
  * # # nk_end
  * Needs to be called at the end of the window building process to process scaling, scrollbars and general cleanup.

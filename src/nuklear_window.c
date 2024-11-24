@@ -15,6 +15,7 @@ nk_create_window(struct nk_context *ctx)
     elem->data.win.seq = ctx->seq;
     return &elem->data.win;
 }
+
 NK_LIB void
 nk_free_window(struct nk_context *ctx, struct nk_window *win)
 {
@@ -42,6 +43,7 @@ nk_free_window(struct nk_context *ctx, struct nk_window *win)
     struct nk_page_element *pe = NK_CONTAINER_OF(pd, struct nk_page_element, data);
     nk_free_page_element(ctx, pe);}
 }
+
 NK_LIB struct nk_window*
 nk_find_window(const struct nk_context *ctx, nk_hash hash, const char *name)
 {
@@ -58,6 +60,7 @@ nk_find_window(const struct nk_context *ctx, nk_hash hash, const char *name)
     }
     return 0;
 }
+
 NK_LIB void
 nk_insert_window(struct nk_context *ctx, struct nk_window *win,
     enum nk_window_insert_location loc)
@@ -103,6 +106,7 @@ nk_insert_window(struct nk_context *ctx, struct nk_window *win,
     }
     ctx->count++;
 }
+
 NK_LIB void
 nk_remove_window(struct nk_context *ctx, struct nk_window *win)
 {
@@ -132,15 +136,40 @@ nk_remove_window(struct nk_context *ctx, struct nk_window *win)
     win->prev = 0;
     ctx->count--;
 }
+
+NK_INTERN struct nk_rect nk_window_clamp_bounds(struct nk_rect bounds,
+    struct nk_vec2 min_size, struct nk_vec2 max_size) 
+{
+    /* clamp width */
+    if (min_size.x > 0 && bounds.w < min_size.x)
+        bounds.w = min_size.x;
+    else if (max_size.x > 0 && bounds.w > max_size.x)
+        bounds.w = max_size.x;
+    /* clamp height */
+    if (min_size.x > 0 && bounds.w < min_size.x)
+        bounds.w = min_size.x;
+    else if (max_size.x > 0 && bounds.w > max_size.x)
+        bounds.w = max_size.x;
+    return bounds;
+}
+
 NK_API nk_bool
-nk_begin(struct nk_context *ctx, const char *title,
+nk_begin(struct nk_context *ctx, const char *title, 
     struct nk_rect bounds, nk_flags flags)
 {
-    return nk_begin_titled(ctx, title, title, bounds, flags);
+    return nk_begin_ext(ctx, title, title, bounds, nk_vec2(0, 0), nk_vec2(0, 0), flags);
 }
+
+NK_API nk_bool 
+nk_begin_titled(struct nk_context *ctx, const char *id, const char *title,
+    struct nk_rect bounds, nk_flags flags) 
+{
+    return nk_begin_ext(ctx, id, title, bounds, nk_vec2(0, 0), nk_vec2(0, 0), flags);
+}
+
 NK_API nk_bool
-nk_begin_titled(struct nk_context *ctx, const char *name, const char *title,
-    struct nk_rect bounds, nk_flags flags)
+nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
+    struct nk_rect bounds, struct nk_vec2 min_size, struct nk_vec2 max_size, nk_flags flags)
 {
     struct nk_window *win;
     struct nk_style *style;
@@ -149,18 +178,18 @@ nk_begin_titled(struct nk_context *ctx, const char *name, const char *title,
     int ret = 0;
 
     NK_ASSERT(ctx);
-    NK_ASSERT(name);
+    NK_ASSERT(id);
     NK_ASSERT(title);
     NK_ASSERT(ctx->style.font && ctx->style.font->width && "if this triggers you forgot to add a font");
     NK_ASSERT(!ctx->current && "if this triggers you missed a `nk_end` call");
-    if (!ctx || ctx->current || !title || !name)
+    if (!ctx || ctx->current || !title || !id)
         return 0;
 
     /* find or create window */
     style = &ctx->style;
-    name_len = (int)nk_strlen(name);
-    name_hash = nk_murmur_hash(name, (int)name_len, NK_WINDOW_TITLE);
-    win = nk_find_window(ctx, name_hash, name);
+    name_len = (int)nk_strlen(id);
+    name_hash = nk_murmur_hash(id, (int)name_len, NK_WINDOW_TITLE);
+    win = nk_find_window(ctx, name_hash, id);
     if (!win) {
         /* create new window */
         nk_size name_length = (nk_size)name_len;
@@ -174,10 +203,10 @@ nk_begin_titled(struct nk_context *ctx, const char *name, const char *title,
         nk_command_buffer_init(&win->buffer, &ctx->memory, NK_CLIPPING_ON);
 
         win->flags = flags;
-        win->bounds = bounds;
+        win->bounds = nk_window_clamp_bounds(bounds, min_size, max_size);
         win->name = name_hash;
         name_length = NK_MIN(name_length, NK_WINDOW_MAX_NAME-1);
-        NK_MEMCPY(win->name_string, name, name_length);
+        NK_MEMCPY(win->name_string, id, name_length);
         win->name_string[name_length] = 0;
         win->popup.win = 0;
         win->widgets_disabled = nk_false;
@@ -187,8 +216,12 @@ nk_begin_titled(struct nk_context *ctx, const char *name, const char *title,
         /* update window */
         win->flags &= ~(nk_flags)(NK_WINDOW_PRIVATE-1);
         win->flags |= flags;
-        if (!(win->flags & (NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE)))
+        if (!(win->flags & (NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE))) {
             win->bounds = bounds;
+        } else {
+            win-> bounds = nk_window_clamp_bounds(bounds, min_size, max_size);
+        }
+        
         /* If this assert triggers you either:
          *
          * I.) Have more than one window with the same name or
@@ -293,6 +326,7 @@ nk_begin_titled(struct nk_context *ctx, const char *name, const char *title,
     win->layout->offset_y = &win->scrollbar.y;
     return ret;
 }
+
 NK_API void
 nk_end(struct nk_context *ctx)
 {
@@ -311,6 +345,7 @@ nk_end(struct nk_context *ctx)
     nk_free_panel(ctx, ctx->current->layout);
     ctx->current = 0;
 }
+
 NK_API struct nk_rect
 nk_window_get_bounds(const struct nk_context *ctx)
 {
@@ -319,6 +354,7 @@ nk_window_get_bounds(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return nk_rect(0,0,0,0);
     return ctx->current->bounds;
 }
+
 NK_API struct nk_vec2
 nk_window_get_position(const struct nk_context *ctx)
 {
@@ -327,6 +363,7 @@ nk_window_get_position(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return nk_vec2(0,0);
     return nk_vec2(ctx->current->bounds.x, ctx->current->bounds.y);
 }
+
 NK_API struct nk_vec2
 nk_window_get_size(const struct nk_context *ctx)
 {
@@ -335,6 +372,7 @@ nk_window_get_size(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return nk_vec2(0,0);
     return nk_vec2(ctx->current->bounds.w, ctx->current->bounds.h);
 }
+
 NK_API float
 nk_window_get_width(const struct nk_context *ctx)
 {
@@ -343,6 +381,7 @@ nk_window_get_width(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return 0;
     return ctx->current->bounds.w;
 }
+
 NK_API float
 nk_window_get_height(const struct nk_context *ctx)
 {
@@ -351,6 +390,7 @@ nk_window_get_height(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return 0;
     return ctx->current->bounds.h;
 }
+
 NK_API struct nk_rect
 nk_window_get_content_region(const struct nk_context *ctx)
 {
@@ -359,6 +399,7 @@ nk_window_get_content_region(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return nk_rect(0,0,0,0);
     return ctx->current->layout->clip;
 }
+
 NK_API struct nk_vec2
 nk_window_get_content_region_min(const struct nk_context *ctx)
 {
@@ -368,6 +409,7 @@ nk_window_get_content_region_min(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return nk_vec2(0,0);
     return nk_vec2(ctx->current->layout->clip.x, ctx->current->layout->clip.y);
 }
+
 NK_API struct nk_vec2
 nk_window_get_content_region_max(const struct nk_context *ctx)
 {
@@ -378,6 +420,7 @@ nk_window_get_content_region_max(const struct nk_context *ctx)
     return nk_vec2(ctx->current->layout->clip.x + ctx->current->layout->clip.w,
         ctx->current->layout->clip.y + ctx->current->layout->clip.h);
 }
+
 NK_API struct nk_vec2
 nk_window_get_content_region_size(const struct nk_context *ctx)
 {
@@ -387,6 +430,7 @@ nk_window_get_content_region_size(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return nk_vec2(0,0);
     return nk_vec2(ctx->current->layout->clip.w, ctx->current->layout->clip.h);
 }
+
 NK_API struct nk_command_buffer*
 nk_window_get_canvas(const struct nk_context *ctx)
 {
@@ -396,6 +440,7 @@ nk_window_get_canvas(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return 0;
     return &ctx->current->buffer;
 }
+
 NK_API struct nk_panel*
 nk_window_get_panel(const struct nk_context *ctx)
 {
@@ -404,6 +449,7 @@ nk_window_get_panel(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return 0;
     return ctx->current->layout;
 }
+
 NK_API void
 nk_window_get_scroll(const struct nk_context *ctx, nk_uint *offset_x, nk_uint *offset_y)
 {
@@ -418,6 +464,7 @@ nk_window_get_scroll(const struct nk_context *ctx, nk_uint *offset_x, nk_uint *o
     if (offset_y)
       *offset_y = win->scrollbar.y;
 }
+
 NK_API nk_bool
 nk_window_has_focus(const struct nk_context *ctx)
 {
@@ -427,6 +474,7 @@ nk_window_has_focus(const struct nk_context *ctx)
     if (!ctx || !ctx->current) return 0;
     return ctx->current == ctx->active;
 }
+
 NK_API nk_bool
 nk_window_is_hovered(const struct nk_context *ctx)
 {
@@ -442,6 +490,7 @@ nk_window_is_hovered(const struct nk_context *ctx)
         return nk_input_is_mouse_hovering_rect(&ctx->input, actual_bounds);
     }
 }
+
 NK_API nk_bool
 nk_window_is_any_hovered(const struct nk_context *ctx)
 {
@@ -469,6 +518,7 @@ nk_window_is_any_hovered(const struct nk_context *ctx)
     }
     return 0;
 }
+
 NK_API nk_bool
 nk_item_is_any_active(const struct nk_context *ctx)
 {
@@ -476,6 +526,7 @@ nk_item_is_any_active(const struct nk_context *ctx)
     int any_active = (ctx->last_widget_state & NK_WIDGET_STATE_MODIFIED);
     return any_hovered || any_active;
 }
+
 NK_API nk_bool
 nk_window_is_collapsed(const struct nk_context *ctx, const char *name)
 {
@@ -491,6 +542,7 @@ nk_window_is_collapsed(const struct nk_context *ctx, const char *name)
     if (!win) return 0;
     return win->flags & NK_WINDOW_MINIMIZED;
 }
+
 NK_API nk_bool
 nk_window_is_closed(const struct nk_context *ctx, const char *name)
 {
@@ -506,6 +558,7 @@ nk_window_is_closed(const struct nk_context *ctx, const char *name)
     if (!win) return 1;
     return (win->flags & NK_WINDOW_CLOSED);
 }
+
 NK_API nk_bool
 nk_window_is_hidden(const struct nk_context *ctx, const char *name)
 {
@@ -521,6 +574,7 @@ nk_window_is_hidden(const struct nk_context *ctx, const char *name)
     if (!win) return 1;
     return (win->flags & NK_WINDOW_HIDDEN);
 }
+
 NK_API nk_bool
 nk_window_is_active(const struct nk_context *ctx, const char *name)
 {
@@ -536,6 +590,7 @@ nk_window_is_active(const struct nk_context *ctx, const char *name)
     if (!win) return 0;
     return win == ctx->active;
 }
+
 NK_API struct nk_window*
 nk_window_find(const struct nk_context *ctx, const char *name)
 {
@@ -545,6 +600,7 @@ nk_window_find(const struct nk_context *ctx, const char *name)
     title_hash = nk_murmur_hash(name, (int)title_len, NK_WINDOW_TITLE);
     return nk_find_window(ctx, title_hash, name);
 }
+
 NK_API void
 nk_window_close(struct nk_context *ctx, const char *name)
 {
@@ -558,6 +614,7 @@ nk_window_close(struct nk_context *ctx, const char *name)
     win->flags |= NK_WINDOW_HIDDEN;
     win->flags |= NK_WINDOW_CLOSED;
 }
+
 NK_API void
 nk_window_set_bounds(struct nk_context *ctx,
     const char *name, struct nk_rect bounds)
@@ -569,6 +626,7 @@ nk_window_set_bounds(struct nk_context *ctx,
     if (!win) return;
     win->bounds = bounds;
 }
+
 NK_API void
 nk_window_set_position(struct nk_context *ctx,
     const char *name, struct nk_vec2 pos)
@@ -578,6 +636,7 @@ nk_window_set_position(struct nk_context *ctx,
     win->bounds.x = pos.x;
     win->bounds.y = pos.y;
 }
+
 NK_API void
 nk_window_set_size(struct nk_context *ctx,
     const char *name, struct nk_vec2 size)
@@ -587,6 +646,7 @@ nk_window_set_size(struct nk_context *ctx,
     win->bounds.w = size.x;
     win->bounds.h = size.y;
 }
+
 NK_API void
 nk_window_set_scroll(struct nk_context *ctx, nk_uint offset_x, nk_uint offset_y)
 {
@@ -599,6 +659,7 @@ nk_window_set_scroll(struct nk_context *ctx, nk_uint offset_x, nk_uint offset_y)
     win->scrollbar.x = offset_x;
     win->scrollbar.y = offset_y;
 }
+
 NK_API void
 nk_window_collapse(struct nk_context *ctx, const char *name,
                     enum nk_collapse_states c)
@@ -617,6 +678,7 @@ nk_window_collapse(struct nk_context *ctx, const char *name,
         win->flags |= NK_WINDOW_MINIMIZED;
     else win->flags &= ~(nk_flags)NK_WINDOW_MINIMIZED;
 }
+
 NK_API void
 nk_window_collapse_if(struct nk_context *ctx, const char *name,
     enum nk_collapse_states c, int cond)
@@ -625,6 +687,7 @@ nk_window_collapse_if(struct nk_context *ctx, const char *name,
     if (!ctx || !cond) return;
     nk_window_collapse(ctx, name, c);
 }
+
 NK_API void
 nk_window_show(struct nk_context *ctx, const char *name, enum nk_show_states s)
 {
@@ -642,6 +705,7 @@ nk_window_show(struct nk_context *ctx, const char *name, enum nk_show_states s)
         win->flags |= NK_WINDOW_HIDDEN;
     } else win->flags &= ~(nk_flags)NK_WINDOW_HIDDEN;
 }
+
 NK_API void
 nk_window_show_if(struct nk_context *ctx, const char *name,
     enum nk_show_states s, int cond)
@@ -669,6 +733,7 @@ nk_window_set_focus(struct nk_context *ctx, const char *name)
     }
     ctx->active = win;
 }
+
 NK_API void
 nk_rule_horizontal(struct nk_context *ctx, struct nk_color color, nk_bool rounding)
 {
