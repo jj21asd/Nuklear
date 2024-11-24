@@ -137,8 +137,9 @@ nk_remove_window(struct nk_context *ctx, struct nk_window *win)
     ctx->count--;
 }
 
-NK_INTERN struct nk_rect nk_window_clamp_bounds(struct nk_rect bounds,
-    struct nk_vec2 min_size, struct nk_vec2 max_size) 
+NK_INTERN struct nk_rect
+nk_window_clamp_bounds(struct nk_rect bounds, struct nk_vec2 min_size,
+    struct nk_vec2 max_size) 
 {
     /* clamp width */
     if (min_size.x > 0 && bounds.w < min_size.x)
