@@ -1338,9 +1338,7 @@ NK_API nk_bool nk_begin(struct nk_context *ctx, const char *title, struct nk_rec
  * until `nk_end` or `false(0)` otherwise for example if minimized
 
  */
-NK_API nk_bool nk_begin_titled(struct nk_context *ctx, const char *id, const char *title, struct nk_rect bounds, nk_flags flags);
-
-NK_API nk_bool nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
+NK_API nk_bool nk_begin_titled(struct nk_context *ctx, const char *id, const char *title,
     struct nk_rect bounds, struct nk_vec2 min_size, struct nk_vec2 max_size, nk_flags flags);
 
 /**
@@ -5545,6 +5543,8 @@ struct nk_window {
     nk_flags flags;
 
     struct nk_rect bounds;
+    struct nk_vec2 internal_size; /* size of the window if it was unclamped, used for resizing calculation */
+    struct nk_vec2 min_size, max_size;
     struct nk_scroll scrollbar;
     struct nk_command_buffer buffer;
     struct nk_panel *layout;

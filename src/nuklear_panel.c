@@ -539,33 +539,51 @@ nk_panel_end(struct nk_context *ctx)
 
         /* do window scaling */
         if (!(window->flags & NK_WINDOW_ROM)) {
-            struct nk_vec2 window_size = style->window.min_size;
             int left_mouse_down = in->mouse.buttons[NK_BUTTON_LEFT].down;
             int left_mouse_click_in_scaler = nk_input_has_mouse_click_down_in_rect(in,
                     NK_BUTTON_LEFT, scaler, nk_true);
 
             if (left_mouse_down && left_mouse_click_in_scaler) {
+                if (in->mouse.buttons[NK_BUTTON_LEFT].clicked) {
+                    /* reset internal_size */
+                    window->internal_size.x = window->bounds.w;
+                    window->internal_size.y = window->bounds.h;
+                }
+
                 float delta_x = in->mouse.delta.x;
                 if (layout->flags & NK_WINDOW_SCALE_LEFT) {
                     delta_x = -delta_x;
                     window->bounds.x += in->mouse.delta.x;
                 }
+
                 /* dragging in x-direction  */
-                if (window->bounds.w + delta_x >= window_size.x) {
-                    if ((delta_x < 0) || (delta_x > 0 && in->mouse.pos.x >= scaler.x)) {
-                        window->bounds.w = window->bounds.w + delta_x;
-                        scaler.x += in->mouse.delta.x;
-                    }
-                }
+                float prev_w = window->bounds.w;
+                window->internal_size.x += delta_x;
+
+                /* clamp width to user min and max size */
+                window->bounds.w = window->internal_size.x;
+                if (window->min_size.x > 0 && window->bounds.w < window->min_size.x)
+                    window->bounds.w = window->min_size.x;
+                if (window->max_size.x > 0 && window->bounds.w > window->max_size.x)
+                    window->bounds.w = window->max_size.x;
+
+                scaler.x += window->bounds.w - prev_w;
+
                 /* dragging in y-direction (only possible if static window) */
                 if (!(layout->flags & NK_WINDOW_DYNAMIC)) {
-                    if (window_size.y < window->bounds.h + in->mouse.delta.y) {
-                        if ((in->mouse.delta.y < 0) || (in->mouse.delta.y > 0 && in->mouse.pos.y >= scaler.y)) {
-                            window->bounds.h = window->bounds.h + in->mouse.delta.y;
-                            scaler.y += in->mouse.delta.y;
-                        }
-                    }
+                    float prev_h = window->bounds.h;
+                    window->internal_size.y += in->mouse.delta.y;
+
+                    /* clamp height to user min and max size */
+                    window->bounds.h = window->internal_size.y;
+                    if (window->min_size.y > 0 && window->bounds.h < window->min_size.y)
+                        window->bounds.h = window->min_size.y;
+                    if (window->max_size.y > 0 && window->bounds.h > window->max_size.y)
+                        window->bounds.h = window->max_size.y;
+
+                    scaler.y += window->bounds.h - prev_h;
                 }
+
                 ctx->style.cursor_active = ctx->style.cursors[NK_CURSOR_RESIZE_TOP_RIGHT_DOWN_LEFT];
                 in->mouse.buttons[NK_BUTTON_LEFT].clicked_pos.x = scaler.x + scaler.w/2.0f;
                 in->mouse.buttons[NK_BUTTON_LEFT].clicked_pos.y = scaler.y + scaler.h/2.0f;

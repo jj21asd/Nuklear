@@ -1560,9 +1560,7 @@ NK_API nk_bool nk_begin(struct nk_context *ctx, const char *title, struct nk_rec
  * until `nk_end` or `false(0)` otherwise for example if minimized
 
  */
-NK_API nk_bool nk_begin_titled(struct nk_context *ctx, const char *id, const char *title, struct nk_rect bounds, nk_flags flags);
-
-NK_API nk_bool nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
+NK_API nk_bool nk_begin_titled(struct nk_context *ctx, const char *id, const char *title,
     struct nk_rect bounds, struct nk_vec2 min_size, struct nk_vec2 max_size, nk_flags flags);
 
 /**
@@ -5767,6 +5765,8 @@ struct nk_window {
     nk_flags flags;
 
     struct nk_rect bounds;
+    struct nk_vec2 internal_size; /* size of the window if it was unclamped, used for resizing calculation */
+    struct nk_vec2 min_size, max_size;
     struct nk_scroll scrollbar;
     struct nk_command_buffer buffer;
     struct nk_panel *layout;
@@ -20436,33 +20436,51 @@ nk_panel_end(struct nk_context *ctx)
 
         /* do window scaling */
         if (!(window->flags & NK_WINDOW_ROM)) {
-            struct nk_vec2 window_size = style->window.min_size;
             int left_mouse_down = in->mouse.buttons[NK_BUTTON_LEFT].down;
             int left_mouse_click_in_scaler = nk_input_has_mouse_click_down_in_rect(in,
                     NK_BUTTON_LEFT, scaler, nk_true);
 
             if (left_mouse_down && left_mouse_click_in_scaler) {
+                if (in->mouse.buttons[NK_BUTTON_LEFT].clicked) {
+                    /* reset internal_size */
+                    window->internal_size.x = window->bounds.w;
+                    window->internal_size.y = window->bounds.h;
+                }
+
                 float delta_x = in->mouse.delta.x;
                 if (layout->flags & NK_WINDOW_SCALE_LEFT) {
                     delta_x = -delta_x;
                     window->bounds.x += in->mouse.delta.x;
                 }
+
                 /* dragging in x-direction  */
-                if (window->bounds.w + delta_x >= window_size.x) {
-                    if ((delta_x < 0) || (delta_x > 0 && in->mouse.pos.x >= scaler.x)) {
-                        window->bounds.w = window->bounds.w + delta_x;
-                        scaler.x += in->mouse.delta.x;
-                    }
-                }
+                float prev_w = window->bounds.w;
+                window->internal_size.x += delta_x;
+
+                /* clamp width to user min and max size */
+                window->bounds.w = window->internal_size.x;
+                if (window->min_size.x > 0 && window->bounds.w < window->min_size.x)
+                    window->bounds.w = window->min_size.x;
+                if (window->max_size.x > 0 && window->bounds.w > window->max_size.x)
+                    window->bounds.w = window->max_size.x;
+
+                scaler.x += window->bounds.w - prev_w;
+
                 /* dragging in y-direction (only possible if static window) */
                 if (!(layout->flags & NK_WINDOW_DYNAMIC)) {
-                    if (window_size.y < window->bounds.h + in->mouse.delta.y) {
-                        if ((in->mouse.delta.y < 0) || (in->mouse.delta.y > 0 && in->mouse.pos.y >= scaler.y)) {
-                            window->bounds.h = window->bounds.h + in->mouse.delta.y;
-                            scaler.y += in->mouse.delta.y;
-                        }
-                    }
+                    float prev_h = window->bounds.h;
+                    window->internal_size.y += in->mouse.delta.y;
+
+                    /* clamp height to user min and max size */
+                    window->bounds.h = window->internal_size.y;
+                    if (window->min_size.y > 0 && window->bounds.h < window->min_size.y)
+                        window->bounds.h = window->min_size.y;
+                    if (window->max_size.y > 0 && window->bounds.h > window->max_size.y)
+                        window->bounds.h = window->max_size.y;
+
+                    scaler.y += window->bounds.h - prev_h;
                 }
+
                 ctx->style.cursor_active = ctx->style.cursors[NK_CURSOR_RESIZE_TOP_RIGHT_DOWN_LEFT];
                 in->mouse.buttons[NK_BUTTON_LEFT].clicked_pos.x = scaler.x + scaler.w/2.0f;
                 in->mouse.buttons[NK_BUTTON_LEFT].clicked_pos.y = scaler.y + scaler.h/2.0f;
@@ -20677,18 +20695,11 @@ NK_API nk_bool
 nk_begin(struct nk_context *ctx, const char *title, 
     struct nk_rect bounds, nk_flags flags)
 {
-    return nk_begin_ext(ctx, title, title, bounds, nk_vec2(0, 0), nk_vec2(0, 0), flags);
-}
-
-NK_API nk_bool 
-nk_begin_titled(struct nk_context *ctx, const char *id, const char *title,
-    struct nk_rect bounds, nk_flags flags) 
-{
-    return nk_begin_ext(ctx, id, title, bounds, nk_vec2(0, 0), nk_vec2(0, 0), flags);
+    return nk_begin_titled(ctx, title, title, bounds, nk_vec2(0, 0), nk_vec2(0, 0), flags);
 }
 
 NK_API nk_bool
-nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
+nk_begin_titled(struct nk_context *ctx, const char *id, const char *title,
     struct nk_rect bounds, struct nk_vec2 min_size, struct nk_vec2 max_size, nk_flags flags)
 {
     struct nk_window *win;
@@ -20725,6 +20736,11 @@ nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
         win->flags = flags;
         win->bounds = nk_window_clamp_bounds(bounds, min_size, max_size);
         win->name = name_hash;
+
+        win->min_size.x = NK_MAX(min_size.x, style->window.min_size.x);
+        win->min_size.y = NK_MAX(min_size.y, style->window.min_size.y);
+        win->max_size = max_size;
+
         name_length = NK_MIN(name_length, NK_WINDOW_MAX_NAME-1);
         NK_MEMCPY(win->name_string, id, name_length);
         win->name_string[name_length] = 0;
@@ -20736,11 +20752,19 @@ nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
         /* update window */
         win->flags &= ~(nk_flags)(NK_WINDOW_PRIVATE-1);
         win->flags |= flags;
+
         if (!(win->flags & (NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE))) {
-            win->bounds = bounds;
-        } else {
+            win->bounds = nk_window_clamp_bounds(bounds, min_size, max_size);
+        }
+
+        if (win->min_size.x != min_size.x || win->min_size.y != min_size.y ||
+            win->max_size.x != max_size.x || win->max_size.y != max_size.y) {
             win->bounds = nk_window_clamp_bounds(win->bounds, min_size, max_size);
         }
+
+        win->min_size.x = NK_MAX(min_size.x, style->window.min_size.x);
+        win->min_size.y = NK_MAX(min_size.y, style->window.min_size.y);
+        win->max_size = max_size;
         
         /* If this assert triggers you either:
          *

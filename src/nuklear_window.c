@@ -158,18 +158,11 @@ NK_API nk_bool
 nk_begin(struct nk_context *ctx, const char *title, 
     struct nk_rect bounds, nk_flags flags)
 {
-    return nk_begin_ext(ctx, title, title, bounds, nk_vec2(0, 0), nk_vec2(0, 0), flags);
-}
-
-NK_API nk_bool 
-nk_begin_titled(struct nk_context *ctx, const char *id, const char *title,
-    struct nk_rect bounds, nk_flags flags) 
-{
-    return nk_begin_ext(ctx, id, title, bounds, nk_vec2(0, 0), nk_vec2(0, 0), flags);
+    return nk_begin_titled(ctx, title, title, bounds, nk_vec2(0, 0), nk_vec2(0, 0), flags);
 }
 
 NK_API nk_bool
-nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
+nk_begin_titled(struct nk_context *ctx, const char *id, const char *title,
     struct nk_rect bounds, struct nk_vec2 min_size, struct nk_vec2 max_size, nk_flags flags)
 {
     struct nk_window *win;
@@ -206,6 +199,11 @@ nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
         win->flags = flags;
         win->bounds = nk_window_clamp_bounds(bounds, min_size, max_size);
         win->name = name_hash;
+
+        win->min_size.x = NK_MAX(min_size.x, style->window.min_size.x);
+        win->min_size.y = NK_MAX(min_size.y, style->window.min_size.y);
+        win->max_size = max_size;
+
         name_length = NK_MIN(name_length, NK_WINDOW_MAX_NAME-1);
         NK_MEMCPY(win->name_string, id, name_length);
         win->name_string[name_length] = 0;
@@ -217,11 +215,19 @@ nk_begin_ext(struct nk_context *ctx, const char *id, const char *title,
         /* update window */
         win->flags &= ~(nk_flags)(NK_WINDOW_PRIVATE-1);
         win->flags |= flags;
+
         if (!(win->flags & (NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE))) {
-            win->bounds = bounds;
-        } else {
+            win->bounds = nk_window_clamp_bounds(bounds, min_size, max_size);
+        }
+
+        if (win->min_size.x != min_size.x || win->min_size.y != min_size.y ||
+            win->max_size.x != max_size.x || win->max_size.y != max_size.y) {
             win->bounds = nk_window_clamp_bounds(win->bounds, min_size, max_size);
         }
+
+        win->min_size.x = NK_MAX(min_size.x, style->window.min_size.x);
+        win->min_size.y = NK_MAX(min_size.y, style->window.min_size.y);
+        win->max_size = max_size;
         
         /* If this assert triggers you either:
          *
